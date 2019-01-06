@@ -12,6 +12,8 @@ import sys
 mta_api_key = 'a628ade898c8be80e2d069f519ca3ee3'
 risi_api_key = '8162319f-e74d-4e7e-a632-75a8fdca95cd'
 
+stations_to_track = {}
+
 """
 	Read the csv file and return a DataFrame
 """
@@ -75,6 +77,21 @@ def get_schedule(feed, line_id, result):
 		print('could not find entity in the reply feed from API.')
 		return
 	return result
+
+def log_one_hour(feed):
+	pattern = '%Y-%m-%d %H:%M:%S'
+	departs = feed['stops']
+	now = int(time.time())
+	for station in departs:
+		if station not in stations_to_track:
+			stations_to_track[station] = []
+		date_time = departs[station]['departure']
+		station_epoch = int(time.mktime(time.strptime(date_time, pattern)))
+		print(now - station_epoch)
+		if station_epoch - now <= 3600: #no need to check for > 0 ( sometimes dep time a bit passed might appear )
+			stations_to_track[station].append(station_epoch)
+	print(stations_to_track)
+
 
 
 
@@ -142,19 +159,22 @@ def log_station(s_id, logs, deps):
 ##############################################
 starttime=time.time()
 deps = []
-while True:
+while int(time.time()) < 1546795056:
 	print("Getting Query..")
 	result = get_feeds(26,"a")
 	print("result: ",result)
-	temp = log_station('H03', result, deps)
+	log_one_hour(result)
+	time.sleep(60.0 - ((time.time() - starttime) % 30.0))
+	"""temp = log_station('H03', result, deps)
 	if temp != -1:
 		break
 	else:
 		time.sleep(60.0 - ((time.time() - starttime) % 30.0))
 		print(deps)
 		print("------")
-		continue
-print(deps)
+		continue"""
+
+print(stations_to_track)
 
 ##############################################
 #df = read_file("stations.csv")
