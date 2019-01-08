@@ -13,6 +13,13 @@ mta_api_key = 'a628ade898c8be80e2d069f519ca3ee3'
 risi_api_key = '8162319f-e74d-4e7e-a632-75a8fdca95cd'
 railRoad_url = "http://lirr42.mta.info/stationInfo.php?id=13"
 
+subway_stations = "subway_stations.csv"
+subway_request = 'http://datamine.mta.info/mta_esi.php?key={}' #&feed_id='+str(id)
+
+bus_stops = "bus_stops.csv"
+bus_request = 'http://gtfsrt.prod.obanyc.com/tripUpdates?key=' #+risi_api_key
+
+
 stations_to_track = {}
 
 """
@@ -46,7 +53,6 @@ def get_schedule(feed, line_id, result):
 	arrival = None
 	departure = None
 	if 'entity' in feed:
-		print(feed["entity"])
 		for en in feed["entity"]:
 			#if "vehicle" in en:
 			#	continue
@@ -83,8 +89,8 @@ def get_schedule(feed, line_id, result):
 	return result
 
 def log_one_hour(feed, id):
-	print(epoch_to_realtime(int(time.time())))
 	pattern = '%Y-%m-%d %H:%M:%S'
+	id = id.capitalize()
 	if (str(id) not in feed) or (feed == None):
 		return
 	departs = feed[str(id)]
@@ -106,13 +112,22 @@ def log_one_hour(feed, id):
 
 
 
-def get_feeds(id, line_id):
+def get_feeds(id, line_id, request, key, feed_id):
 	line_id = line_id.capitalize() #in case it is not in capital case
 	raw_feed = gtfs_realtime_pb2.FeedMessage()
-	request = 'http://datamine.mta.info/mta_esi.php?key={}&feed_id='+str(id)
+
 	#request = railRoad_url
 	#request = 'http://gtfsrt.prod.obanyc.com/tripUpdates?key='+risi_api_key
-	response = requests.get(request.format(mta_api_key))
+	if feed_id != None:
+		params = {
+			'key':risi_api_key,
+		}
+	else:
+		params = {
+			'key':risi_api_key,
+			'feed_id': feed_id
+		}
+	response = requests.get(request, params)
 	raw_feed.ParseFromString(response.content)
 	feed = protobuf_to_dict(raw_feed)
 	result = {}
@@ -125,17 +140,23 @@ def get_feeds(id, line_id):
 		#result = feed
 		#print(result)
 		#return result
-		print(result)
 		return
 
 
 def get_bus_feed():
 	url = 'http://gtfsrt.prod.obanyc.com/tripUpdates?key='+risi_api_key
-	#params = {
-	#	'key':risi_api_key
-	#}
-	r = requests.get(url)
-	print(r.content)
+	raw_feed = gtfs_realtime_pb2.FeedMessage()
+	#url = "http://bustime.mta.info/api/siri/vehicle-monitoring.json"
+	params = {
+		'key':risi_api_key,
+		#'key':mta_api_key,
+		'feed_id': 'M2'
+	}
+	#r = requests.get(url, params)
+	r = requests.get(bus_request, params)
+	raw_feed.ParseFromString(r.content)
+	feed = protobuf_to_dict(raw_feed)
+	print(feed)
 
 def getSomeFeeds():
 	url = 'https://mnorth.prod.acquia-sites.com/wse/LIRR/gtfsrt/realtime/'+mta_api_key+'/json'
@@ -175,7 +196,10 @@ starttime=time.time()
 deps = []
 index = 1
 line_ids = [1,26]
+
+get_bus_feed()
 liness = {"1":"1","26":"C"}
+"""
 while int(time.time()) < 1546897926:
 	index = index % 2
 	l_id = line_ids[index]
@@ -197,8 +221,17 @@ while int(time.time()) < 1546897926:
 	#	print(deps)
 	#	print("------")
 	#	continue
-
+"""
+result = get_feeds(26,"c")
+print("C result: ",result)
+log_one_hour(result, "c")
 print(stations_to_track)
+time.sleep(30.0 - ((time.time() - starttime) % 30.0))
+result = get_feeds(1,"1")
+print("1 result: ",result)
+log_one_hour(result, "1")
+print(stations_to_track)
+
 
 ##############################################
 #df = read_file("stations.csv")
