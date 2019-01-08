@@ -217,23 +217,27 @@ result = get_feeds("C", subway_request, mta_api_key, 26)
 print("RESULT: ",result)
 #get_bus_feed()
 liness = {"1":"1","26":"C"}
-
+"""
 starttime=time.time()
+f = open("output1.json","w")
 index = 1
 counter = 0
-line_ids = [1,26]
+#line_ids = [1,26]
+line_ids = ["M2","M10"]
+#liness = {"1":"1","26":"C"}
 liness = {"1":"1","26":"C"}
 #while int(time.time()) < 1546897926:
-while counter < 5:
+while counter < 10:
 	index = index % 2
 	l_id = line_ids[index]
 	print("Getting Query..")
-	result = get_feeds(liness[str(l_id)],subway_request,mta_api_key,l_id)
+	#result = get_feeds(liness[str(l_id)],subway_request,mta_api_key,l_id)
+	result = get_feeds(l_id,bus_request,risi_api_key,None)
 	if result != False:
 		print("result: ",result)
-		log_one_hour(result, liness[str(l_id)])
+		log_one_hour(result, l_id)
 
-	time.sleep(30.0 - ((time.time() - starttime) % 30.0))
+	time.sleep(60.0 - ((time.time() - starttime) % 30.0))
 	index += 1
 	counter += 1
 	#temp = log_station('H03', result, deps)
@@ -244,6 +248,9 @@ while counter < 5:
 	#	print(deps)
 	#	print("------")
 	#	continue
+jsonFile = json.dumps(stations_to_track)
+f.write(str(jsonFile))
+f.close()
 """
 result = get_feeds("M2",bus_request, risi_api_key, None)
 print("M2 result: ",result)
@@ -254,7 +261,7 @@ print(stations_to_track)
 #print("1 result: ",result)
 #log_one_hour(result, "1")
 #print(stations_to_track)
-
+"""
 
 
 
