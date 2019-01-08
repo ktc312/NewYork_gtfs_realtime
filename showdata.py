@@ -48,10 +48,11 @@ def epoch_to_realtime(epoch):
 	#TODO: not a good way because of time shifting. change it in a better way.
 	return (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(epoch)))
 
-def get_schedule(feed, line_id, result):
-	df = read_file("stations.csv")
+def get_schedule(feed, line_id, result, serviceType):
+	#df = read_file(subway_stations)
 	arrival = None
 	departure = None
+	result[str(line_id)] = {}
 	if 'entity' in feed:
 		for en in feed["entity"]:
 			#if "vehicle" in en:
@@ -60,15 +61,24 @@ def get_schedule(feed, line_id, result):
 				if 'trip' in en["trip_update"]:
 					if 'trip_id' in en["trip_update"]["trip"]:
 						if en["trip_update"]["trip"]["route_id"] == str(line_id):
-							result[str(line_id)] = {}
+							#print(en["trip_update"])
+							#print("----------------------------------")
 							for update in en["trip_update"]["stop_time_update"]:
 								if 'departure' in update:
 									departure = update["departure"]["time"]
 								#station_name = get_station_from_id(update["stop_id"], df) # no need to know the names for now
-								stp_id = update["stop_id"][:-1] # sometimes id has N or S at the end ( southbound and northbound ) we don't need to check that.
+								# FOR SUBWAY: sometimes id has N or S at the end ( southbound and northbound ) we don't need to check that.
+								if ( serviceType == "subway"):
+									stp_id = update["stop_id"][:-1]
+									result[str(line_id)][stp_id] = {"departure":epoch_to_realtime(departure)}
+								if ( serviceType == "bus"):
+									stp_id = update["stop_id"]
+									if stp_id in result[str(line_id)]:
+										result[str(line_id)][stp_id].append(epoch_to_realtime(departure))
+									else:
+										result[str(line_id)][stp_id] = [epoch_to_realtime(departure)]
 								"""if departue == None:
 									continue"""
-								result[str(line_id)][stp_id] = {"departure":epoch_to_realtime(departure)}
 								#print("loop result ",result["stops"][stp_id])
 					else:
 						print("field trip_ID is not found")
@@ -112,21 +122,23 @@ def log_one_hour(feed, id):
 
 
 
-def get_feeds(id, line_id, request, key, feed_id):
+def get_feeds(line_id, request, key, feed_id):
 	line_id = line_id.capitalize() #in case it is not in capital case
 	raw_feed = gtfs_realtime_pb2.FeedMessage()
 
 	#request = railRoad_url
 	#request = 'http://gtfsrt.prod.obanyc.com/tripUpdates?key='+risi_api_key
-	if feed_id != None:
+	if feed_id == None:
 		params = {
-			'key':risi_api_key,
+			'key':key,
 		}
+		serviceType = "bus"
 	else:
 		params = {
-			'key':risi_api_key,
+			'key':key,
 			'feed_id': feed_id
 		}
+		serviceType = "subway"
 	response = requests.get(request, params)
 	raw_feed.ParseFromString(response.content)
 	feed = protobuf_to_dict(raw_feed)
@@ -135,7 +147,7 @@ def get_feeds(id, line_id, request, key, feed_id):
 	#f.write(str(feed))
 	if line_id != None:
 		result[line_id] = {}
-		return get_schedule(feed, line_id, result[line_id])
+		return get_schedule(feed, line_id, result[line_id], serviceType)
 	else:
 		#result = feed
 		#print(result)
@@ -196,8 +208,9 @@ starttime=time.time()
 deps = []
 index = 1
 line_ids = [1,26]
-
-get_bus_feed()
+result = get_feeds("M2", bus_request, risi_api_key, None)
+print("RESULT: ",result)
+#get_bus_feed()
 liness = {"1":"1","26":"C"}
 """
 while int(time.time()) < 1546897926:
@@ -221,7 +234,7 @@ while int(time.time()) < 1546897926:
 	#	print(deps)
 	#	print("------")
 	#	continue
-"""
+
 result = get_feeds(26,"c")
 print("C result: ",result)
 log_one_hour(result, "c")
@@ -231,6 +244,8 @@ result = get_feeds(1,"1")
 print("1 result: ",result)
 log_one_hour(result, "1")
 print(stations_to_track)
+"""
+
 
 
 ##############################################
