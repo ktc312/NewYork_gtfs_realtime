@@ -61,22 +61,21 @@ def get_schedule(feed, line_id, result, serviceType):
 				if 'trip' in en["trip_update"]:
 					if 'trip_id' in en["trip_update"]["trip"]:
 						if en["trip_update"]["trip"]["route_id"] == str(line_id):
-							#print(en["trip_update"])
-							#print("----------------------------------")
 							for update in en["trip_update"]["stop_time_update"]:
 								if 'departure' in update:
 									departure = update["departure"]["time"]
 								#station_name = get_station_from_id(update["stop_id"], df) # no need to know the names for now
 								# FOR SUBWAY: sometimes id has N or S at the end ( southbound and northbound ) we don't need to check that.
-								if ( serviceType == "subway"):
-									stp_id = update["stop_id"][:-1]
-									result[str(line_id)][stp_id] = {"departure":epoch_to_realtime(departure)}
-								if ( serviceType == "bus"):
-									stp_id = update["stop_id"]
-									if stp_id in result[str(line_id)]:
-										result[str(line_id)][stp_id].append(epoch_to_realtime(departure))
-									else:
-										result[str(line_id)][stp_id] = [epoch_to_realtime(departure)]
+								#if ( serviceType == "subway"):
+								#	stp_id = update["stop_id"][:-1]
+								#if ( serviceType == "bus"):
+								stp_id = update["stop_id"]
+									#result[str(line_id)][stp_id] = {"departure":epoch_to_realtime(departure)}
+
+								if stp_id in result[str(line_id)]:
+									result[str(line_id)][stp_id].append(epoch_to_realtime(departure))
+								else:
+									result[str(line_id)][stp_id] = [epoch_to_realtime(departure)]
 								"""if departue == None:
 									continue"""
 								#print("loop result ",result["stops"][stp_id])
@@ -104,19 +103,23 @@ def log_one_hour(feed, id):
 	if (str(id) not in feed) or (feed == None):
 		return
 	departs = feed[str(id)]
-	now = int(time.time() - 21600) #shifting our time to NewYork's time
 	for station in departs:
 		if station not in stations_to_track:
 			stations_to_track[station] = []
-		if 'departure' not in departs[station]:
+		if len(departs[station]) == 0:
 			return
-		date_time = departs[station]['departure']
+		for t in departs[station]:
+			if t == "UNKN":
+				continue
+			date_time = t
 		#changing departure time into epoch time:
-		station_epoch = int(time.mktime(time.strptime(date_time, pattern)))
+			station_epoch = int(time.mktime(time.strptime(date_time, pattern)))
 		#Now checking if the departure time is less than one hour to current time:
 		#no need to check for > 0 ( sometimes a departue time which might have passed, appears ):
-		if (station_epoch - now) <= 3600:
-			stations_to_track[station].append(station_epoch)
+			now = int(time.time() - 21600) #shifting our time to NewYork's time
+			if (station_epoch - now) <= 3600:
+				stations_to_track[station].append(station_epoch)
+		stations_to_track[station].append("-") # to realize one round is complete
 	print(stations_to_track)
 
 
@@ -204,28 +207,35 @@ def log_station(s_id, logs, deps):
 ##############################################
 #get_feeds(31, 'MQ_O8-Weekday-042000_M20_3')
 ##############################################
+"""
 starttime=time.time()
 deps = []
 index = 1
 line_ids = [1,26]
-result = get_feeds("M2", bus_request, risi_api_key, None)
+#result = get_feeds("M2", bus_request, risi_api_key, None)
+result = get_feeds("C", subway_request, mta_api_key, 26)
 print("RESULT: ",result)
 #get_bus_feed()
 liness = {"1":"1","26":"C"}
-"""
-while int(time.time()) < 1546897926:
+
+starttime=time.time()
+index = 1
+counter = 0
+line_ids = [1,26]
+liness = {"1":"1","26":"C"}
+#while int(time.time()) < 1546897926:
+while counter < 5:
 	index = index % 2
 	l_id = line_ids[index]
 	print("Getting Query..")
-	result = get_feeds(l_id,liness[str(l_id)])
-	if result == False:
-		time.sleep(30.0 - ((time.time() - starttime) % 30.0))
-		continue
-	print("result: ",result)
-	log_one_hour(result, liness[str(l_id)])
+	result = get_feeds(liness[str(l_id)],subway_request,mta_api_key,l_id)
+	if result != False:
+		print("result: ",result)
+		log_one_hour(result, liness[str(l_id)])
 
 	time.sleep(30.0 - ((time.time() - starttime) % 30.0))
 	index += 1
+	counter += 1
 	#temp = log_station('H03', result, deps)
 	#if temp != -1:
 	#	break
@@ -234,17 +244,17 @@ while int(time.time()) < 1546897926:
 	#	print(deps)
 	#	print("------")
 	#	continue
-
-result = get_feeds(26,"c")
-print("C result: ",result)
-log_one_hour(result, "c")
-print(stations_to_track)
-time.sleep(30.0 - ((time.time() - starttime) % 30.0))
-result = get_feeds(1,"1")
-print("1 result: ",result)
-log_one_hour(result, "1")
-print(stations_to_track)
 """
+result = get_feeds("M2",bus_request, risi_api_key, None)
+print("M2 result: ",result)
+log_one_hour(result, "M2")
+print(stations_to_track)
+#time.sleep(30.0 - ((time.time() - starttime) % 30.0))
+#result = get_feeds(1,"1")
+#print("1 result: ",result)
+#log_one_hour(result, "1")
+#print(stations_to_track)
+
 
 
 
