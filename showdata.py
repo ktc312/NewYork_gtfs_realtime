@@ -20,7 +20,8 @@ bus_stops = "bus_stops.csv"
 bus_request = 'http://gtfsrt.prod.obanyc.com/tripUpdates?key=' #+risi_api_key
 
 
-stations_to_track = {}
+bus_to_track = {}
+sub_stations_to_track = {}
 
 """
 	Read the csv file and return a DataFrame
@@ -48,9 +49,48 @@ def epoch_to_realtime(epoch):
 	#TODO: not a good way because of time shifting. change it in a better way.
 	return (time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(epoch)))
 
-def get_schedule(feed, line_id, result, serviceType):
+def get_bus_schedule(feed, line_id, result):
+	departure = None
+	vehicleId = ''
+	line_id = str(line_id).capitalize()
+	result[line_id] = {}
+	if 'entity' in feed:
+		for en in feed["entity"]:
+			if "trip_update" in en:
+				if 'vehicle' in en["trip_update"]:
+					vehicleId = en["trip_update"]['vehicle']['id']
+					result[line_id][vehicleId] = {}
+				if 'trip' in en["trip_update"]:
+					if 'trip_id' in en["trip_update"]["trip"]:
+						if en["trip_update"]["trip"]["route_id"] == line_id:
+							for update in en["trip_update"]["stop_time_update"]:
+								if 'departure' in update:
+									departure = update["departure"]["time"]
+								stp_id = update["stop_id"]
+								#if stp_id in result[line_id][vehicleId]:
+								#	result[line_id][vehicleId][stp_id].append(epoch_to_realtime(departure))
+								#else:
+								result[line_id][vehicleId][stp_id] = epoch_to_realtime(departure)
+					else:
+						print("field trip_ID is not found")
+				else:
+					print("field trip is not found")
+			else:
+				if 'alert' in en:
+					if 'header_text' in en['alert']:
+						print(en['alert']['header_text'])
+						result["alerts"] = str(en['alert']['header_text'])+'-at-'+str(int(time.time()-21600))+'for '+line_id
+						continue
+					else:
+						result["alerts"] = en['alert']+'-at-'+str(int(time.time()-21600))+'for '+line_id
+						continue
+	else:
+		print('could not find entity in the reply feed from API.')
+		return
+	return result
+
+def get_schedule(feed, line_id, result):
 	#df = read_file(subway_stations)
-	arrival = None
 	departure = None
 	result[str(line_id)] = {}
 	if 'entity' in feed:
@@ -90,6 +130,32 @@ def get_schedule(feed, line_id, result, serviceType):
 		return
 	return result
 
+def log_one_hour_bus(feed, id):
+	pattern = '%Y-%m-%d %H:%M:%S'
+	ID = str(id).capitalize()
+	if (feed == None):
+		return
+	if ID not in feed:
+		return
+	if ID not in bus_to_track:
+		bus_to_track[ID] = {}
+	departs = feed[ID]
+	for bus in departs:
+		if len(bus) == 0:
+			continue
+
+		if bus not in bus_to_track[ID]:
+			bus_to_track[ID][bus] = []
+		for stop, when in departs[bus].items():
+			if when == 'UNKN':
+				continue
+			station_epoch = int(time.mktime(time.strptime(when, pattern)))
+			now = int(time.time() - 21600) #shifting our time to NewYork's time
+			if (station_epoch - now) <= 3600:
+				bus_to_track[ID][bus].append(station_epoch)
+		bus_to_track[ID][bus].append("-")
+	print("bus_to_track: ",bus_to_track)
+
 def log_one_hour(feed, id):
 	pattern = '%Y-%m-%d %H:%M:%S'
 	ID = str(id).capitalize()
@@ -98,12 +164,12 @@ def log_one_hour(feed, id):
 		return
 	if ID not in feed:
 		return
-	if ID not in stations_to_track:
-		stations_to_track[ID] = {}
+	if ID not in sub_stations_to_track:
+		sub_stations_to_track[ID] = {}
 	departs = feed[ID]
 	for station in departs:
-		if station not in stations_to_track[ID]:
-			stations_to_track[ID][station] = []
+		if station not in sub_stations_to_track[ID]:
+			sub_stations_to_track[ID][station] = []
 		if len(departs[station]) == 0:
 			return
 		for t in departs[station]:
@@ -116,9 +182,9 @@ def log_one_hour(feed, id):
 		#no need to check for > 0 ( sometimes a departue time which might have passed, appears ):
 			now = int(time.time() - 21600) #shifting our time to NewYork's time
 			if (station_epoch - now) <= 3600:
-				stations_to_track[ID][station].append(station_epoch)
-		stations_to_track[ID][station].append("-") # to realize one round is complete
-	print(stations_to_track)
+				sub_stations_to_track[ID][station].append(station_epoch)
+		sub_stations_to_track[ID][station].append("-") # to realize one round is complete
+	print("sub_stations_to_track: ", sub_stations_to_track)
 
 
 
@@ -152,12 +218,15 @@ def get_feeds(line_id, request, key, feed_id):
 	#f.write(str(feed))
 	if line_id != None:
 		result[line_id] = {}
-		return get_schedule(feed, line_id, result[line_id], serviceType)
+		if serviceType == 'subway':
+			return get_schedule(feed, line_id, result[line_id])
+		else:
+			return get_bus_schedule(feed, line_id, result[line_id])
 	else:
+		return
 		#result = feed
 		#print(result)
 		#return result
-		return
 
 
 def get_bus_feed():
@@ -221,39 +290,41 @@ print("RESULT: ",result)
 liness = {"1":"1","26":"C"}
 """
 starttime=time.time()
-f = open("output_bus.json","w")
+busFile = open("output_bus.json","w")
+subFile = open("output_sub.json","w")
 index = 1
 counter = 0
-#line_ids = [1,26]
-line_ids = ["M2","M10"]
-#liness = {"1":"1","26":"A"}
+sub_line_ids = [1,26]
+bus_line_ids = ["M2","M10"]
+subways = {"1":"1","26":"A"}
 #liness = {"1":"1","26":"C"}
 #while int(time.time()) < 1546897926:
-while counter < 5:
-	index = index % 2
-	l_id = line_ids[index]
-	print("Getting Query..")
-	#result = get_feeds(liness[str(l_id)],subway_request,mta_api_key,l_id)
-	result = get_feeds(l_id,bus_request,risi_api_key,None)
-	if result != False:
-		print("result: ",result)
-		log_one_hour(result, l_id)
-		#log_one_hour(result, liness[str(l_id)])
 
-	time.sleep(30.0 - ((time.time() - starttime) % 30.0))
+while counter < 3:
+	index = index % 2
+	sub_id = sub_line_ids[index]
+	bus_id = bus_line_ids[index]
+	print("Getting Query..")
+	subResult = get_feeds(subways[str(sub_id)],subway_request,mta_api_key,sub_id)
+	busResult = get_feeds(bus_id,bus_request,risi_api_key,None)
+	if subResult != False:
+		#log_one_hour_bus(result, l_id)
+		log_one_hour(subResult, subways[str(sub_id)])
+
+
+	if busResult != False:
+		log_one_hour_bus(busResult, bus_id)
+		#log_one_hour(result, subways[str(sub_id)])
 	index += 1
 	counter += 1
-	#temp = log_station('H03', result, deps)
-	#if temp != -1:
-	#	break
-	#else:
-	#	time.sleep(60.0 - ((time.time() - starttime) % 30.0))
-	#	print(deps)
-	#	print("------")
-	#	continue
-jsonFile = json.dumps(stations_to_track)
-f.write(str(jsonFile))
-f.close()
+	time.sleep(60.0 - ((time.time() - starttime) % 30.0))
+
+subJsonFile = json.dumps(sub_stations_to_track)
+busJsonFile = json.dumps(bus_to_track)
+busFile.write(str(busJsonFile))
+subFile.write(str(subJsonFile))
+busFile.close()
+subFile.close()
 """
 result = get_feeds("M2",bus_request, risi_api_key, None)
 print("M2 result: ",result)
@@ -264,10 +335,13 @@ print(stations_to_track)
 #print("1 result: ",result)
 #log_one_hour(result, "1")
 #print(stations_to_track)
+
+
+subResult = get_feeds("1",subway_request,mta_api_key,1)
+if subResult != False:
+	#log_one_hour_bus(result, l_id)
+	log_one_hour(subResult, "1")
 """
-
-
-
 ##############################################
 #df = read_file("stations.csv")
 ##############################################
