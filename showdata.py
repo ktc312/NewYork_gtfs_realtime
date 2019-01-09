@@ -64,21 +64,14 @@ def get_schedule(feed, line_id, result, serviceType):
 							for update in en["trip_update"]["stop_time_update"]:
 								if 'departure' in update:
 									departure = update["departure"]["time"]
-								#station_name = get_station_from_id(update["stop_id"], df) # no need to know the names for now
-								# FOR SUBWAY: sometimes id has N or S at the end ( southbound and northbound ) we don't need to check that.
-								#if ( serviceType == "subway"):
-								#	stp_id = update["stop_id"][:-1]
-								#if ( serviceType == "bus"):
 								stp_id = update["stop_id"]
+								#if stp_id == "400337":
 									#result[str(line_id)][stp_id] = {"departure":epoch_to_realtime(departure)}
 
 								if stp_id in result[str(line_id)]:
 									result[str(line_id)][stp_id].append(epoch_to_realtime(departure))
 								else:
 									result[str(line_id)][stp_id] = [epoch_to_realtime(departure)]
-								"""if departue == None:
-									continue"""
-								#print("loop result ",result["stops"][stp_id])
 					else:
 						print("field trip_ID is not found")
 				else:
@@ -87,10 +80,10 @@ def get_schedule(feed, line_id, result, serviceType):
 				if 'alert' in en:
 					if 'header_text' in en['alert']:
 						print(en['alert']['header_text'])
-						result["alerts"] = en['alert']['header_text']
+						result["alerts"] = str(en['alert']['header_text'])+'-at-'+str(int(time.time()-21600))+'for '+line_id
 						continue
 					else:
-						result["alerts"] = en['alert']
+						result["alerts"] = en['alert']+'-at-'+str(int(time.time()-21600))+'for '+line_id
 						continue
 	else:
 		print('could not find entity in the reply feed from API.')
@@ -99,13 +92,18 @@ def get_schedule(feed, line_id, result, serviceType):
 
 def log_one_hour(feed, id):
 	pattern = '%Y-%m-%d %H:%M:%S'
-	id = id.capitalize()
-	if (str(id) not in feed) or (feed == None):
+	ID = str(id).capitalize()
+	#id = id.capitalize()
+	if (feed == None):
 		return
-	departs = feed[str(id)]
+	if ID not in feed:
+		return
+	if ID not in stations_to_track:
+		stations_to_track[ID] = {}
+	departs = feed[ID]
 	for station in departs:
-		if station not in stations_to_track:
-			stations_to_track[station] = []
+		if station not in stations_to_track[ID]:
+			stations_to_track[ID][station] = []
 		if len(departs[station]) == 0:
 			return
 		for t in departs[station]:
@@ -118,8 +116,8 @@ def log_one_hour(feed, id):
 		#no need to check for > 0 ( sometimes a departue time which might have passed, appears ):
 			now = int(time.time() - 21600) #shifting our time to NewYork's time
 			if (station_epoch - now) <= 3600:
-				stations_to_track[station].append(station_epoch)
-		stations_to_track[station].append("-") # to realize one round is complete
+				stations_to_track[ID][station].append(station_epoch)
+		stations_to_track[ID][station].append("-") # to realize one round is complete
 	print(stations_to_track)
 
 
@@ -143,7 +141,11 @@ def get_feeds(line_id, request, key, feed_id):
 		}
 		serviceType = "subway"
 	response = requests.get(request, params)
-	raw_feed.ParseFromString(response.content)
+	try:
+		raw_feed.ParseFromString(response.content)
+	except:
+		print("could not parse the response.")
+		return False
 	feed = protobuf_to_dict(raw_feed)
 	result = {}
 	#f = open("demofile.txt", "w")
@@ -219,15 +221,15 @@ print("RESULT: ",result)
 liness = {"1":"1","26":"C"}
 """
 starttime=time.time()
-f = open("output1.json","w")
+f = open("output_bus.json","w")
 index = 1
 counter = 0
 #line_ids = [1,26]
 line_ids = ["M2","M10"]
+#liness = {"1":"1","26":"A"}
 #liness = {"1":"1","26":"C"}
-liness = {"1":"1","26":"C"}
 #while int(time.time()) < 1546897926:
-while counter < 10:
+while counter < 5:
 	index = index % 2
 	l_id = line_ids[index]
 	print("Getting Query..")
@@ -236,8 +238,9 @@ while counter < 10:
 	if result != False:
 		print("result: ",result)
 		log_one_hour(result, l_id)
+		#log_one_hour(result, liness[str(l_id)])
 
-	time.sleep(60.0 - ((time.time() - starttime) % 30.0))
+	time.sleep(30.0 - ((time.time() - starttime) % 30.0))
 	index += 1
 	counter += 1
 	#temp = log_station('H03', result, deps)
